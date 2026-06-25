@@ -90,32 +90,45 @@ fun CalendarApp() {
     Scaffold(
         bottomBar = {
             NavigationBar {
+                // 遍历定义的底部标签列表，为每个标签创建一个导航项
                 bottomTabs.forEach { tab ->
+                    // 判断当前标签是否被选中
+                    // currentDestination 表示当前所在页面。hierarchy 会检查导航层级，
+                    // 确保即使在子路由中，对应的父级 Tab 也能保持选中状态。
                     val selected = currentDestination
                         ?.hierarchy
                         ?.any { destination -> destination.route == tab.route } == true
-
+                    // 在NavigationBar 中创建，多个 Tab 选项
                     NavigationBarItem(
-                        selected = selected,
+                        selected = selected, // 设置选中状态
                         onClick = {
+                            // 执行导航跳转
                             navController.navigate(tab.route) {
-                                // 回到图中的起始页面，避免用户反复点击 tab 时创建很多重复页面。
+                                // 1. popUpTo: 将返回栈弹出到图表的起始目的地（通常是首页）。
+                                // 这样可以避免用户在不同 Tab 之间切换时，返回栈堆积大量重复页面。
                                 popUpTo(navController.graph.startDestinationId) {
+                                    // 保存被弹出页面的状态，以便之后恢复。
                                     saveState = true
                                 }
-                                // 同一个 tab 已经在顶部时不重复入栈。
+
+                                // 2. launchSingleTop: 开启单栈顶模式。
+                                // 如果当前已经在该 Tab 页面，再次点击不会在栈顶重复创建新实例。
                                 launchSingleTop = true
-                                // 重新选中之前打开过的 tab 时，尽量恢复它自己的状态。
+
+                                // 3. restoreState: 恢复之前保存的状态。
+                                // 当用户切回之前访问过的 Tab 时，之前的滚动位置或输入内容等会被还原。
                                 restoreState = true
                             }
                         },
                         icon = {
+                            // 根据是否选中，动态切换“实心”或“描边”图标
                             Icon(
                                 imageVector = if (selected) tab.selectedIcon else tab.unselectedIcon,
-                                contentDescription = tab.title,
+                                contentDescription = tab.title, // 提供给无障碍服务的描述
                             )
                         },
                         label = {
+                            // 显示标签的标题文字
                             Text(text = tab.title)
                         },
                     )
@@ -131,6 +144,10 @@ fun CalendarApp() {
     }
 }
 
+// 总结：
+// NavigationBarItem 发出 “去哪儿” 的指令，
+// NavController 负责 “带路”，
+// 而 NavHost 则是 “舞台”，根据当前的地址切换台上表演的演员（Screen）。
 @Composable
 private fun AppNavHost(
     contentPadding: PaddingValues,
