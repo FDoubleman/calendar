@@ -14,6 +14,8 @@ local.properties
 captures/
 .externalNativeBuild/
 .cxx/
+*.db-shm
+*.db-wal
 
 # macOS
 .DS_Store

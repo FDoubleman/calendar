@@ -38,6 +38,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.fmm.calendar.ui.calendar.CalendarScreen
 import com.fmm.calendar.ui.theme.CalendarTheme
 
 // BottomTab 把底部导航需要的信息收拢在一起。
@@ -175,14 +176,6 @@ private fun AppNavHost(
             ProfileScreen()
         }
     }
-}
-
-@Composable
-private fun CalendarScreen() {
-    PlaceholderScreen(
-        title = "日历",
-        message = "这里将逐步实现月视图、日期选择和节假日信息。",
-    )
 }
 
 @Composable
