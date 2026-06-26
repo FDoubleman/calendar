@@ -3,6 +3,7 @@ package com.fmm.calendar.ui.calendar
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -22,6 +23,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentHeight
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -45,11 +48,15 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -63,36 +70,38 @@ import androidx.compose.ui.text.style.LineHeightStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.YearMonth
+import java.time.temporal.ChronoUnit
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun CalendarScreen(
     viewModel: CalendarViewModel = viewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsState()
 
-    // collectAsState 会把 ViewModel 中的 StateFlow 转成 Compose State。
-    // 当 ViewModel 更新月份或选中日期时，这个页面会自动重组并刷新 UI。
     CalendarScreenContent(
         uiState = uiState,
         onDateClick = viewModel::selectDate,
         onTodayClick = viewModel::goToToday,
-        onPreviousMonth = viewModel::showPreviousMonth,
-        onNextMonth = viewModel::showNextMonth,
+        onMonthChanged = viewModel::onMonthChanged,
     )
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun CalendarScreenContent(
     uiState: CalendarUiState,
     onDateClick: (LocalDate) -> Unit,
     onTodayClick: () -> Unit,
-    onPreviousMonth: () -> Unit,
-    onNextMonth: () -> Unit,
+    onMonthChanged: (YearMonth) -> Unit,
 ) {
     Surface(
         modifier = Modifier.fillMaxSize(),
@@ -107,11 +116,13 @@ private fun CalendarScreenContent(
             CalendarTopBar()
             Spacer(modifier = Modifier.height(8.dp))
             MonthCalendarCard(
-                uiState = uiState,
+                visibleMonth = uiState.visibleMonth,
+                selectedDate = uiState.selectedDate,
+                today = uiState.today,
+                monthCellsMap = uiState.monthCellsMap,
                 onDateClick = onDateClick,
                 onTodayClick = onTodayClick,
-                onPreviousMonth = onPreviousMonth,
-                onNextMonth = onNextMonth,
+                onMonthChanged = onMonthChanged,
             )
             Spacer(modifier = Modifier.height(10.dp))
             SelectedDateCard(selectedDay = uiState.selectedDay)
@@ -153,18 +164,58 @@ private fun CalendarTopBar() {
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun MonthCalendarCard(
-    uiState: CalendarUiState,
+    visibleMonth: YearMonth,
+    selectedDate: LocalDate,
+    today: LocalDate,
+    monthCellsMap: Map<YearMonth, List<CalendarDayCellUi>>,
     onDateClick: (LocalDate) -> Unit,
     onTodayClick: () -> Unit,
-    onPreviousMonth: () -> Unit,
-    onNextMonth: () -> Unit,
+    onMonthChanged: (YearMonth) -> Unit,
 ) {
+    val initialMonth = remember { YearMonth.from(today) }
+    val pagerState = rememberPagerState(initialPage = 2500) { 5000 }
+
+    // 使用 derivedStateOf 实时计算当前显示的月份，用于标题显示，确保滑动过程中的标题切换比等待 VM 状态回传更即时且丝滑
+    val displayedMonth = remember {
+        derivedStateOf {
+            initialMonth.plusMonths((pagerState.currentPage - 2500).toLong())
+        }
+    }
+
+    // 动态计算当前月份所需的行数 (rowCount)
+    val targetRowCount by remember {
+        derivedStateOf {
+            val month = displayedMonth.value
+            val firstDayOfWeek = month.atDay(1).dayOfWeek.value % 7
+            val totalDays = firstDayOfWeek + month.lengthOfMonth()
+            (totalDays + 6) / 7
+        }
+    }
+
+    // 监听 Pager 滑动，当滑动停止并确定页面后（settledPage），再通知 VM 更新数据，减少滑动过程中的 UI 线程负载
+    LaunchedEffect(pagerState) {
+        snapshotFlow { pagerState.settledPage }.collect { page ->
+            val targetMonth = initialMonth.plusMonths((page - 2500).toLong())
+            if (targetMonth != visibleMonth) {
+                onMonthChanged(targetMonth)
+            }
+        }
+    }
+
+    // 监听 VM 状态变化（如点击“今天”或外部切换），同步 Pager 位置
+    LaunchedEffect(visibleMonth) {
+        val targetPage = 2500 + ChronoUnit.MONTHS.between(initialMonth, visibleMonth).toInt()
+        if (pagerState.currentPage != targetPage) {
+            pagerState.animateScrollToPage(targetPage)
+        }
+    }
+
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            // animateContentSize 会在月历行数从 6 行变 5 行、5 行变 4 行时平滑改变高度。
             .animateContentSize(animationSpec = tween(durationMillis = 220)),
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -183,7 +234,7 @@ private fun MonthCalendarCard(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
-                        text = uiState.visibleMonth.monthTitle(),
+                        text = displayedMonth.value.monthTitle(),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold,
                     )
@@ -195,21 +246,37 @@ private fun MonthCalendarCard(
                 }
                 Spacer(modifier = Modifier.weight(1f))
                 TextButton(
-                onClick = onTodayClick,
+                    onClick = onTodayClick,
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
                 ) {
                     Text(text = "今天")
                 }
             }
             WeekHeader()
-            MonthGrid(
-                cells = uiState.monthCells,
-                selectedDate = uiState.selectedDate,
-                today = uiState.today,
-                onDateClick = onDateClick,
-                onPreviousMonth = onPreviousMonth,
-                onNextMonth = onNextMonth,
-            )
+            
+            HorizontalPager(
+                state = pagerState,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height((targetRowCount * 60).dp), // 动态高度 = 行数 * 每行高度
+                beyondBoundsPageCount = 1, // 预加载前后页，使滑动切换更流畅
+                key = { it }, // 使用 key 优化 Pager 复用
+            ) { page ->
+                val month = initialMonth.plusMonths((page - 2500).toLong())
+                val cells = monthCellsMap[month]
+                
+                if (cells != null) {
+                    MonthGrid(
+                        cells = cells,
+                        selectedDate = selectedDate,
+                        today = today,
+                        onDateClick = onDateClick,
+                    )
+                } else {
+                    // 加载中的占位，使用 fillMaxSize 以适应 Pager 的动态高度
+                    Box(modifier = Modifier.fillMaxWidth().fillMaxSize())
+                }
+            }
         }
     }
 }
@@ -237,35 +304,15 @@ private fun MonthGrid(
     selectedDate: LocalDate,
     today: LocalDate,
     onDateClick: (LocalDate) -> Unit,
-    onPreviousMonth: () -> Unit,
-    onNextMonth: () -> Unit,
 ) {
-    var dragAmount by remember { mutableFloatStateOf(0f) }
-
-    // 手势只挂在月历网格上：左滑下个月，右滑上个月。
-    // consume 逻辑保持简单，方便先理解“累计拖动距离 -> 判断方向 -> 切换月份”这条线。
     Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .pointerInput(Unit) {
-                detectHorizontalDragGestures(
-                    onDragStart = { dragAmount = 0f },
-                    onHorizontalDrag = { _, amount -> dragAmount += amount },
-                    onDragEnd = {
-                        when {
-                            dragAmount < -80f -> onNextMonth()
-                            dragAmount > 80f -> onPreviousMonth()
-                        }
-                        dragAmount = 0f
-                    },
-                )
-            },
+        modifier = Modifier.fillMaxWidth(),
     ) {
         cells.chunked(7).forEach { week ->
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(48.dp),
+                    .height(60.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 week.forEach { cell ->
@@ -294,26 +341,34 @@ private fun CalendarDayCell(
         is CalendarDayCellUi.Day -> {
             val selected = cell.date == selectedDate
             val isToday = cell.date == today
-            val dayColor = if (selected) {
-                Color.White
-            } else if (!cell.isCurrentMonth) {
-                MaterialTheme.colorScheme.onSurface.copy(alpha = 0.35f)
-            } else if (cell.isWeekend) {
-                ErrorRed
-            } else {
-                MaterialTheme.colorScheme.onSurface
+
+            val onSurface = MaterialTheme.colorScheme.onSurface
+            val dayColor = remember(selected, isToday, cell.isCurrentMonth, cell.isWeekend, onSurface) {
+                if (selected || isToday) {
+                    Color.White
+                } else if (!cell.isCurrentMonth) {
+                    onSurface.copy(alpha = 0.35f)
+                } else if (cell.isWeekend) {
+                    ErrorRed
+                } else {
+                    onSurface
+                }
             }
-            val subtitleColor = if (selected) {
-                AccentGreen
-            } else {
-                cell.subtitleType.baseSubtitleColor().let { baseColor ->
-                    if (cell.isCurrentMonth) baseColor else baseColor.copy(alpha = 0.45f)
+            val subtitleColor = remember(selected, isToday, cell.isCurrentMonth, cell.subtitleType) {
+                if (selected) {
+                    AccentGreen
+                } else if (isToday) {
+                    Color(0xFFBDBDBD)
+                } else {
+                    cell.subtitleType.baseSubtitleColor().let { baseColor ->
+                        if (cell.isCurrentMonth) baseColor else baseColor.copy(alpha = 0.45f)
+                    }
                 }
             }
 
             Box(
                 modifier = modifier
-                    .height(48.dp)
+                    .height(60.dp)
                     .clip(RoundedCornerShape(10.dp))
                     .clickable { onDateClick(cell.date) },
                 contentAlignment = Alignment.Center,
@@ -326,7 +381,13 @@ private fun CalendarDayCell(
                         modifier = Modifier
                             .size(30.dp)
                             .clip(CircleShape)
-                            .background(if (selected) AccentGreen else Color.Transparent),
+                            .background(
+                                when {
+                                    selected -> AccentGreen
+                                    isToday -> Color(0xFFBDBDBD)
+                                    else -> Color.Transparent
+                                }
+                            ),
                         contentAlignment = Alignment.Center,
                     ) {
                         Text(
@@ -686,3 +747,60 @@ private val SoftBlue = Color(0xFFE8F2FF)
 private val ErrorRed = Color(0xFFE53935)
 private val YellowDot = Color(0xFFFF9800)
 private val BlueDot = Color(0xFF1976D2)
+
+@Preview(showBackground = true)
+@Composable
+private fun PreviewCalendarScreen() {
+    val today = LocalDate.now()
+    val visibleMonth = YearMonth.from(today)
+    
+    val mockCells = (1..35).map { i ->
+        val date = today.minusDays(today.dayOfMonth.toLong() - i)
+        CalendarDayCellUi.Day(
+            date = date,
+            dayNumber = date.dayOfMonth.toString(),
+            subtitle = if (i % 7 == 0) "冬至" else "初$i",
+            subtitleType = if (i % 7 == 0) CalendarSubtitleType.Jieqi else CalendarSubtitleType.LunarDay,
+            isWeekend = i % 7 == 0 || i % 7 == 6,
+            festivals = emptyList(),
+            jieqiName = null,
+            eventDots = if (i % 3 == 0) listOf(EventPriority.High, EventPriority.Medium) else emptyList(),
+            isCurrentMonth = date.monthValue == today.monthValue
+        )
+    }
+
+    val mockUiState = CalendarUiState(
+        today = today,
+        visibleMonth = visibleMonth,
+        selectedDate = today,
+        monthCells = mockCells,
+        monthCellsMap = mapOf(visibleMonth to mockCells),
+        selectedDay = SelectedDayUi(
+            date = today,
+            dateText = "2024年12月20日",
+            dayNumber = "20",
+            weekdayText = "周五",
+            statusText = "今天",
+            ganzhiSummary = "甲辰年 丙子月 癸卯日 [属龙] 周五 第51周 今天",
+            lunarText = "冬月二十",
+            tags = listOf("冬至"),
+            festivalLine = "· 冬至",
+            jieqiDistanceText = "距小寒 15天",
+            yiItems = listOf("祭祀", "祈福", "纳畜", "入宅"),
+            jiItems = listOf("嫁娶", "安葬", "作灶")
+        ),
+        selectedEvents = listOf(
+            MockCalendarEvent(today, "10:00", "项目会议", "会议室A", EventPriority.High),
+            MockCalendarEvent(today, "14:00", "需求评审", "线上", EventPriority.Medium)
+        )
+    )
+
+    MaterialTheme {
+        CalendarScreenContent(
+            uiState = mockUiState,
+            onDateClick = {},
+            onTodayClick = {},
+            onMonthChanged = {}
+        )
+    }
+}

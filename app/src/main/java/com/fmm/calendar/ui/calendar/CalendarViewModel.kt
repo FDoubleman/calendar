@@ -23,6 +23,7 @@ class CalendarViewModel(application: Application) : AndroidViewModel(application
     )
 
     private val today = LocalDate.now()
+    private val dayEntitiesCache = mutableMapOf<YearMonth, List<CalendarDayEntity>>()
 
     private val _uiState = MutableStateFlow(
         CalendarUiState(
@@ -35,6 +36,11 @@ class CalendarViewModel(application: Application) : AndroidViewModel(application
 
     init {
         loadMonth(YearMonth.from(today), selectedDate = today)
+    }
+
+    fun onMonthChanged(month: YearMonth) {
+        if (month == _uiState.value.visibleMonth) return
+        loadMonth(month, selectedDate = preferredSelectedDate(month))
     }
 
     fun selectDate(date: LocalDate) {
@@ -63,6 +69,13 @@ class CalendarViewModel(application: Application) : AndroidViewModel(application
         return if (month == YearMonth.from(today)) today else month.atDay(1)
     }
 
+    private suspend fun getDaysForMonth(month: YearMonth): List<CalendarDayEntity> {
+        dayEntitiesCache[month]?.let { return it }
+        return repository.getMonthDays(month.year, month.monthValue).also {
+            dayEntitiesCache[month] = it
+        }
+    }
+
     private fun loadMonth(month: YearMonth, selectedDate: LocalDate) {
         viewModelScope.launch {
             _uiState.update {
@@ -70,28 +83,35 @@ class CalendarViewModel(application: Application) : AndroidViewModel(application
                     isLoading = true,
                     visibleMonth = month,
                     selectedDate = selectedDate,
+                    rowCount = calculateRowCount(month),
                 )
             }
 
-            val monthDays = repository.getMonthDays(month.year, month.monthValue)
-            val previousMonthDays = repository.getMonthDays(
-                month.minusMonths(1).year,
-                month.minusMonths(1).monthValue,
+            // 加载范围：M-2 到 M+2，确保 M-1, M, M+1 的 cells 都能完整构建（包含补全的头尾天数）
+            val monthsToFetch = listOf(
+                month.minusMonths(2),
+                month.minusMonths(1),
+                month,
+                month.plusMonths(1),
+                month.plusMonths(2)
             )
-            val nextMonthDays = repository.getMonthDays(
-                month.plusMonths(1).year,
-                month.plusMonths(1).monthValue,
-            )
+            monthsToFetch.forEach { getDaysForMonth(it) }
+
+            val newCellsMap = mutableMapOf<YearMonth, List<CalendarDayCellUi>>()
+            listOf(month.minusMonths(1), month, month.plusMonths(1)).forEach { m ->
+                newCellsMap[m] = buildMonthCells(
+                    month = m,
+                    monthDays = getDaysForMonth(m),
+                    previousMonthDays = getDaysForMonth(m.minusMonths(1)),
+                    nextMonthDays = getDaysForMonth(m.plusMonths(1))
+                )
+            }
+
             _uiState.update {
                 it.copy(
                     isLoading = false,
-                    monthCells = buildMonthCells(
-                        month = month,
-                        monthDays = monthDays,
-                        previousMonthDays = previousMonthDays,
-                        nextMonthDays = nextMonthDays,
-                    ),
-                    rowCount = calculateRowCount(month),
+                    monthCells = newCellsMap[month].orEmpty(),
+                    monthCellsMap = it.monthCellsMap + newCellsMap
                 )
             }
             loadSelectedDate(selectedDate)
@@ -158,6 +178,7 @@ data class CalendarUiState(
     val visibleMonth: YearMonth,
     val selectedDate: LocalDate,
     val monthCells: List<CalendarDayCellUi> = emptyList(),
+    val monthCellsMap: Map<YearMonth, List<CalendarDayCellUi>> = emptyMap(),
     val rowCount: Int = 5,
     val selectedDay: SelectedDayUi? = null,
     val selectedEvents: List<MockCalendarEvent> = emptyList(),
