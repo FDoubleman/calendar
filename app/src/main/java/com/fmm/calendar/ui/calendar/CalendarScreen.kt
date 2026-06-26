@@ -53,10 +53,12 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import com.fmm.calendar.ui.components.CommonDatePickerDialog
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -103,6 +105,8 @@ private fun CalendarScreenContent(
     onTodayClick: () -> Unit,
     onMonthChanged: (YearMonth) -> Unit,
 ) {
+    var isDatePickerVisible by remember { mutableStateOf(false) }
+
     Surface(
         modifier = Modifier.fillMaxSize(),
         color = MaterialTheme.colorScheme.background,
@@ -123,7 +127,23 @@ private fun CalendarScreenContent(
                 onDateClick = onDateClick,
                 onTodayClick = onTodayClick,
                 onMonthChanged = onMonthChanged,
+                onTitleClick = { isDatePickerVisible = true }
             )
+            
+            if (isDatePickerVisible) {
+                CommonDatePickerDialog(
+                    initialDate = uiState.selectedDate,
+                    onDismiss = { isDatePickerVisible = false },
+                    onConfirm = { date ->
+                        isDatePickerVisible = false
+                        // 先通知 VM 切换月份，这会触发 Pager 滚动和数据加载
+                        onMonthChanged(YearMonth.from(date))
+                        // 随后强制选中弹框中指定的具体日期，确保不被 loadMonth 内部的默认逻辑覆盖
+                        onDateClick(date)
+                    }
+                )
+            }
+
             Spacer(modifier = Modifier.height(10.dp))
             SelectedDateCard(selectedDay = uiState.selectedDay)
             Spacer(modifier = Modifier.height(10.dp))
@@ -174,6 +194,7 @@ private fun MonthCalendarCard(
     onDateClick: (LocalDate) -> Unit,
     onTodayClick: () -> Unit,
     onMonthChanged: (YearMonth) -> Unit,
+    onTitleClick: () -> Unit,
 ) {
     val initialMonth = remember { YearMonth.from(today) }
     val pagerState = rememberPagerState(initialPage = 2500) { 5000 }
@@ -229,7 +250,7 @@ private fun MonthCalendarCard(
                 Row(
                     modifier = Modifier
                         .clip(RoundedCornerShape(8.dp))
-                        .clickable { /* 后续用于快速定位到指定日期。 */ }
+                        .clickable { onTitleClick() }
                         .padding(horizontal = 4.dp, vertical = 4.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
