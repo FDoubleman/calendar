@@ -48,6 +48,10 @@ val solarTerms = listOf(
     "立冬", "小雪", "大雪", "冬至", "小寒", "大寒",
 )
 
+// 月历 cell 只在“当天正好是节气日”时显示节气名称。
+// 数据库中的 jieqi 形如“秋分 第9天 （距下一个节气...）”，
+// 只有“第1天”才表示这个公历日就是节气当天。
 fun extractCurrentJieqiName(jieqi: String): String? {
-    return solarTerms.firstOrNull { term -> jieqi.startsWith(term) || jieqi.contains(term) }
+    if (jieqi.isBlank() || !jieqi.contains("第1天")) return null
+    return solarTerms.firstOrNull { term -> jieqi.startsWith(term) }
 }

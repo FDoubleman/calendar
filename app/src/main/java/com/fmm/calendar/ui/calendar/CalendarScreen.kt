@@ -4,6 +4,7 @@ import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -20,6 +21,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -55,9 +57,12 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.text.PlatformTextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.LineHeightStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -165,7 +170,7 @@ private fun MonthCalendarCard(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
     ) {
-        Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
+        Column(modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
@@ -190,7 +195,7 @@ private fun MonthCalendarCard(
                 }
                 Spacer(modifier = Modifier.weight(1f))
                 TextButton(
-                    onClick = onTodayClick,
+                onClick = onTodayClick,
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
                 ) {
                     Text(text = "今天")
@@ -218,7 +223,7 @@ private fun WeekHeader() {
                 text = week,
                 modifier = Modifier.weight(1f),
                 color = if (index == 0 || index == 6) ErrorRed else MaterialTheme.colorScheme.onSurface,
-                style = MaterialTheme.typography.labelMedium,
+                style = MaterialTheme.typography.labelLarge,
                 fontWeight = FontWeight.Medium,
                 textAlign = TextAlign.Center,
             )
@@ -286,15 +291,24 @@ private fun CalendarDayCell(
     modifier: Modifier = Modifier,
 ) {
     when (cell) {
-        CalendarDayCellUi.Empty -> Box(modifier = modifier.height(48.dp))
         is CalendarDayCellUi.Day -> {
             val selected = cell.date == selectedDate
             val isToday = cell.date == today
-            val dayColor = when {
-                selected -> Color.White
-                cell.jieqiName != null || cell.festivals.isNotEmpty() -> AccentGreen
-                cell.isWeekend -> ErrorRed
-                else -> MaterialTheme.colorScheme.onSurface
+            val dayColor = if (selected) {
+                Color.White
+            } else if (!cell.isCurrentMonth) {
+                MaterialTheme.colorScheme.onSurface.copy(alpha = 0.35f)
+            } else if (cell.isWeekend) {
+                ErrorRed
+            } else {
+                MaterialTheme.colorScheme.onSurface
+            }
+            val subtitleColor = if (selected) {
+                AccentGreen
+            } else {
+                cell.subtitleType.baseSubtitleColor().let { baseColor ->
+                    if (cell.isCurrentMonth) baseColor else baseColor.copy(alpha = 0.45f)
+                }
             }
 
             Box(
@@ -318,14 +332,14 @@ private fun CalendarDayCell(
                         Text(
                             text = cell.dayNumber,
                             color = dayColor,
-                            style = MaterialTheme.typography.bodyMedium,
+                            style = MaterialTheme.typography.titleMedium,
                             fontWeight = if (selected || isToday) FontWeight.Bold else FontWeight.Medium,
                         )
                     }
                     Text(
                         text = cell.subtitle,
-                        color = if (selected) AccentGreen else dayColor,
-                        fontSize = 9.sp,
+                        color = subtitleColor,
+                        fontSize = 11.sp,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
@@ -333,6 +347,14 @@ private fun CalendarDayCell(
                 }
             }
         }
+    }
+}
+
+private fun CalendarSubtitleType.baseSubtitleColor(): Color {
+    return when (this) {
+        CalendarSubtitleType.Jieqi -> BlueDot
+        CalendarSubtitleType.Festival -> ErrorRed
+        CalendarSubtitleType.LunarDay -> Color.Gray
     }
 }
 
@@ -371,55 +393,80 @@ private fun SelectedDateCard(selectedDay: SelectedDayUi?) {
             return@Card
         }
 
-        Row(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(14.dp),
-            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = selectedDay.dateText,
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.Top,
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(width = 42.dp, height = 54.dp)
+                        .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(8.dp))
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Color.White),
                 )
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Spacer(modifier = Modifier.width(12.dp))
+                Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = selectedDay.dayNumber,
-                        color = AccentGreen,
-                        fontSize = 52.sp,
-                        lineHeight = 54.sp,
-                        fontWeight = FontWeight.Bold,
-                    )
-                    Spacer(modifier = Modifier.width(14.dp))
-                    Column {
-                        Text(
-                            text = selectedDay.weekdayText,
-                            style = MaterialTheme.typography.titleMedium,
+                        text = selectedDay.lunarText.substringAfter(" "),
+                        style = TextStyle(
+                            fontSize = 30.sp,
+                            lineHeight = 34.sp,
                             fontWeight = FontWeight.SemiBold,
-                        )
+                            platformStyle = PlatformTextStyle(includeFontPadding = false),
+                            lineHeightStyle = LineHeightStyle(
+                                alignment = LineHeightStyle.Alignment.Center,
+                                trim = LineHeightStyle.Trim.Both,
+                            ),
+                        ),
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
                         Text(
-                            text = selectedDay.lunarText,
-                            style = MaterialTheme.typography.bodySmall,
+                            text = selectedDay.ganzhiSummary,
+                            modifier = Modifier.weight(1f),
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = selectedDay.statusText,
+                            style = MaterialTheme.typography.bodyLarge,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
                 }
             }
-            Column(horizontalAlignment = Alignment.End) {
-                TagRow(tags = selectedDay.tags)
-                if (selectedDay.jieqiDistanceText.isNotBlank()) {
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Surface(
-                        shape = RoundedCornerShape(50),
-                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f),
-                    ) {
-                        Text(
-                            text = selectedDay.jieqiDistanceText,
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
-                            style = MaterialTheme.typography.labelMedium,
-                        )
-                    }
+
+            if (selectedDay.festivalLine.isNotBlank()) {
+                Spacer(modifier = Modifier.height(12.dp))
+                Text(
+                    text = selectedDay.festivalLine,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = ErrorRed,
+                    fontWeight = FontWeight.Medium,
+                )
+            }
+
+            if (selectedDay.jieqiDistanceText.isNotBlank()) {
+                Spacer(modifier = Modifier.height(10.dp))
+                Surface(
+                    shape = RoundedCornerShape(50),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f),
+                ) {
+                    Text(
+                        text = selectedDay.jieqiDistanceText,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                        style = MaterialTheme.typography.labelMedium,
+                    )
                 }
             }
         }
@@ -460,24 +507,26 @@ private fun AlmanacCard(selectedDay: SelectedDayUi?) {
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
     ) {
-        Row(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.fillMaxWidth()) {
             AlmanacColumn(
                 title = "今日宜",
-                titleColor = AccentGreen,
+                titleColor = ErrorRed,
+                dotColor = ErrorRed,
                 items = selectedDay?.yiItems.orEmpty(),
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.fillMaxWidth(),
             )
             Box(
                 modifier = Modifier
-                    .width(1.dp)
-                    .heightIn(min = 74.dp)
+                    .fillMaxWidth()
+                    .height(1.dp)
                     .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
             )
             AlmanacColumn(
                 title = "今日忌",
-                titleColor = ErrorRed,
+                titleColor = Color.Black,
+                dotColor = Color.Black,
                 items = selectedDay?.jiItems.orEmpty(),
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.fillMaxWidth(),
             )
         }
     }
@@ -487,26 +536,40 @@ private fun AlmanacCard(selectedDay: SelectedDayUi?) {
 private fun AlmanacColumn(
     title: String,
     titleColor: Color,
+    dotColor: Color,
     items: List<String>,
     modifier: Modifier = Modifier,
 ) {
     Column(
-        modifier = modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = modifier.padding(horizontal = 14.dp, vertical = 12.dp),
     ) {
-        Text(
-            text = title,
-            color = titleColor,
-            style = MaterialTheme.typography.titleSmall,
-            fontWeight = FontWeight.SemiBold,
-        )
-        Spacer(modifier = Modifier.height(8.dp))
-        Text(
-            text = if (items.isEmpty()) "暂无" else items.joinToString("  "),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurface,
-            lineHeight = 18.sp,
-        )
+        Row(
+            verticalAlignment = Alignment.Top,
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(30.dp)
+                    .clip(CircleShape)
+                    .background(dotColor),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = title.removePrefix("今日"),
+                    color = Color.White,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
+            Spacer(modifier = Modifier.width(12.dp))
+            Text(
+                text = if (items.isEmpty()) "暂无" else items.joinToString(" "),
+                modifier = Modifier.weight(1f),
+                color = titleColor,
+                style = MaterialTheme.typography.headlineSmall,
+                lineHeight = 28.sp,
+                fontWeight = FontWeight.Medium,
+            )
+        }
     }
 }
 

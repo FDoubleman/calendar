@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.YearMonth
+import java.time.temporal.ChronoUnit
 
 class CalendarViewModel(application: Application) : AndroidViewModel(application) {
     private val repository = CalendarRepository(
@@ -73,10 +74,23 @@ class CalendarViewModel(application: Application) : AndroidViewModel(application
             }
 
             val monthDays = repository.getMonthDays(month.year, month.monthValue)
+            val previousMonthDays = repository.getMonthDays(
+                month.minusMonths(1).year,
+                month.minusMonths(1).monthValue,
+            )
+            val nextMonthDays = repository.getMonthDays(
+                month.plusMonths(1).year,
+                month.plusMonths(1).monthValue,
+            )
             _uiState.update {
                 it.copy(
                     isLoading = false,
-                    monthCells = buildMonthCells(month, monthDays),
+                    monthCells = buildMonthCells(
+                        month = month,
+                        monthDays = monthDays,
+                        previousMonthDays = previousMonthDays,
+                        nextMonthDays = nextMonthDays,
+                    ),
                     rowCount = calculateRowCount(month),
                 )
             }
@@ -101,24 +115,25 @@ class CalendarViewModel(application: Application) : AndroidViewModel(application
     private fun buildMonthCells(
         month: YearMonth,
         monthDays: List<CalendarDayEntity>,
+        previousMonthDays: List<CalendarDayEntity>,
+        nextMonthDays: List<CalendarDayEntity>,
     ): List<CalendarDayCellUi> {
         val leadingEmptyCount = month.atDay(1).dayOfWeek.value % 7
         val trailingEmptyCount = (7 - (leadingEmptyCount + month.lengthOfMonth()) % 7) % 7
 
-        val leading = List(leadingEmptyCount) { CalendarDayCellUi.Empty }
+        val leading = previousMonthDays
+            .takeLast(leadingEmptyCount)
+            .map { entity -> entity.toDayCellUi(isCurrentMonth = false, eventDots = emptyList()) }
         val days = monthDays.map { entity ->
             val date = LocalDate.parse(entity.solarDate)
-            CalendarDayCellUi.Day(
-                date = date,
-                dayNumber = entity.day.toString(),
-                subtitle = entity.cellSubtitle(),
-                isWeekend = entity.isWeekend == 1,
-                festivals = entity.festivalList(),
-                jieqiName = extractCurrentJieqiName(entity.jieqi),
+            entity.toDayCellUi(
+                isCurrentMonth = true,
                 eventDots = eventDotsFor(date),
             )
         }
-        val trailing = List(trailingEmptyCount) { CalendarDayCellUi.Empty }
+        val trailing = nextMonthDays
+            .take(trailingEmptyCount)
+            .map { entity -> entity.toDayCellUi(isCurrentMonth = false, eventDots = emptyList()) }
 
         return leading + days + trailing
     }
@@ -150,17 +165,23 @@ data class CalendarUiState(
 )
 
 sealed interface CalendarDayCellUi {
-    data object Empty : CalendarDayCellUi
-
     data class Day(
         val date: LocalDate,
         val dayNumber: String,
         val subtitle: String,
+        val subtitleType: CalendarSubtitleType,
         val isWeekend: Boolean,
         val festivals: List<String>,
         val jieqiName: String?,
         val eventDots: List<EventPriority>,
+        val isCurrentMonth: Boolean,
     ) : CalendarDayCellUi
+}
+
+enum class CalendarSubtitleType {
+    Jieqi,
+    Festival,
+    LunarDay,
 }
 
 data class SelectedDayUi(
@@ -168,8 +189,11 @@ data class SelectedDayUi(
     val dateText: String,
     val dayNumber: String,
     val weekdayText: String,
+    val statusText: String,
+    val ganzhiSummary: String,
     val lunarText: String,
     val tags: List<String>,
+    val festivalLine: String,
     val jieqiDistanceText: String,
     val yiItems: List<String>,
     val jiItems: List<String>,
@@ -194,34 +218,93 @@ private fun CalendarDayEntity.toSelectedDayUi(distance: JieqiDistance?): Selecte
     val jieqiName = extractCurrentJieqiName(jieqi)
     val festivalTags = festivalList().take(2)
     val tags = listOfNotNull(jieqiName) + festivalTags
+    val today = LocalDate.now()
+    val weekdayText = "星期$weekdayCn"
 
     return SelectedDayUi(
         date = date,
         dateText = "${year}年${month}月${day}日",
         dayNumber = day.toString(),
-        weekdayText = "星期$weekdayCn",
+        weekdayText = weekdayText,
+        statusText = date.relativeDayText(today),
+        ganzhiSummary = "$ganzhiYear $ganzhiMonth $ganzhiDay [属$zodiac] $weekdayText 第${date.weekOfYear()}周",
         lunarText = "$ganzhiYear $lunarDate",
         tags = tags,
+        festivalLine = festivalTags.joinToString(" ") { festival -> "·$festival" },
         jieqiDistanceText = distance?.let { "距${it.name} ${it.days}天" }.orEmpty(),
         yiItems = yiText.splitItems().take(10),
         jiItems = jiText.splitItems().take(10),
     )
 }
 
+private fun CalendarDayEntity.toDayCellUi(
+    isCurrentMonth: Boolean,
+    eventDots: List<EventPriority>,
+): CalendarDayCellUi.Day {
+    val date = LocalDate.parse(solarDate)
+    return CalendarDayCellUi.Day(
+        date = date,
+        dayNumber = day.toString(),
+        subtitle = cellSubtitle(),
+        subtitleType = cellSubtitleType(),
+        isWeekend = isWeekend == 1,
+        festivals = festivalList(),
+        jieqiName = extractCurrentJieqiName(jieqi),
+        eventDots = eventDots,
+        isCurrentMonth = isCurrentMonth,
+    )
+}
+
 private fun CalendarDayEntity.cellSubtitle(): String {
     extractCurrentJieqiName(jieqi)?.let { return it }
-    festivalList().firstOrNull { festival -> festival.length < 6 }?.let { return it }
-    return lunarDate
+    festivalList().firstOrNull { festival -> festival.length < 5 }?.let { return it }
+    return lunarDayOnly()
+}
+
+private fun CalendarDayEntity.cellSubtitleType(): CalendarSubtitleType {
+    return when {
+        extractCurrentJieqiName(jieqi) != null -> CalendarSubtitleType.Jieqi
+        festivalList().any { festival -> festival.length < 5 } -> CalendarSubtitleType.Festival
+        else -> CalendarSubtitleType.LunarDay
+    }
 }
 
 private fun CalendarDayEntity.festivalList(): List<String> {
     return festivalsText.splitItems()
 }
 
+// 月历 cell 的副标题只显示“农历天”，不显示农历月。
+// 例如：
+// - 八月廿一 -> 廿一
+// - 九月初一 -> 初一
+private fun CalendarDayEntity.lunarDayOnly(): String {
+    val monthSeparatorIndex = lunarDate.indexOf("月")
+    return if (monthSeparatorIndex >= 0 && monthSeparatorIndex < lunarDate.lastIndex) {
+        lunarDate.substring(monthSeparatorIndex + 1)
+    } else {
+        lunarDate
+    }
+}
+
 private fun String.splitItems(): List<String> {
     return split("、")
         .map { it.trim() }
         .filter { it.isNotEmpty() }
+}
+
+private fun LocalDate.relativeDayText(today: LocalDate): String {
+    val days = ChronoUnit.DAYS.between(today, this).toInt()
+    return when (days) {
+        0 -> "今天"
+        -1 -> "昨天"
+        1 -> "明天"
+        2 -> "后天"
+        else -> if (days < 0) "${-days}天前" else "${days}天后"
+    }
+}
+
+private fun LocalDate.weekOfYear(): Int {
+    return java.time.temporal.WeekFields.ISO.weekOfYear().getFrom(this).toInt()
 }
 
 private val mockEvents = listOf(
