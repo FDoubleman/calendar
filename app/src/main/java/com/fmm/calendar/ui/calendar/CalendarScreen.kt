@@ -400,57 +400,48 @@ private fun SelectedDateCard(selectedDay: SelectedDayUi?) {
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.Top,
+                verticalAlignment = Alignment.CenterVertically,
             ) {
                 Box(
                     modifier = Modifier
-                        .size(width = 42.dp, height = 54.dp)
-                        .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(8.dp))
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(Color.White),
-                )
-                Spacer(modifier = Modifier.width(12.dp))
-                Column(modifier = Modifier.weight(1f)) {
+                        .size(width = 28.dp, height = 38.dp)
+                        .border(1.5.dp, ErrorRed, RoundedCornerShape(4.dp))
+                        .padding(2.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
                     Text(
-                        text = selectedDay.lunarText.substringAfter(" "),
-                        style = TextStyle(
-                            fontSize = 30.sp,
-                            lineHeight = 34.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            platformStyle = PlatformTextStyle(includeFontPadding = false),
-                            lineHeightStyle = LineHeightStyle(
-                                alignment = LineHeightStyle.Alignment.Center,
-                                trim = LineHeightStyle.Trim.Both,
-                            ),
-                        ),
-                        color = MaterialTheme.colorScheme.onSurface,
+                        text = "农\n历",
+                        color = ErrorRed,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        lineHeight = 13.sp,
+                        textAlign = TextAlign.Center,
                     )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text(
-                            text = selectedDay.ganzhiSummary,
-                            modifier = Modifier.weight(1f),
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = MaterialTheme.colorScheme.onSurface,
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = selectedDay.statusText,
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
                 }
+                Spacer(modifier = Modifier.width(12.dp))
+                Text(
+                    text = selectedDay.lunarText,
+                    style = TextStyle(
+                        fontSize = 32.sp,
+                        fontWeight = FontWeight.Normal,
+                        platformStyle = PlatformTextStyle(includeFontPadding = false),
+                    ),
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
             }
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = selectedDay.ganzhiSummary,
+                modifier = Modifier.fillMaxWidth(),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f),
+            )
 
             if (selectedDay.festivalLine.isNotBlank()) {
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(8.dp))
                 Text(
                     text = selectedDay.festivalLine,
-                    style = MaterialTheme.typography.titleMedium,
+                    style = MaterialTheme.typography.bodyMedium,
                     color = ErrorRed,
                     fontWeight = FontWeight.Medium,
                 )
@@ -565,9 +556,9 @@ private fun AlmanacColumn(
                 text = if (items.isEmpty()) "暂无" else items.joinToString(" "),
                 modifier = Modifier.weight(1f),
                 color = titleColor,
-                style = MaterialTheme.typography.headlineSmall,
-                lineHeight = 28.sp,
-                fontWeight = FontWeight.Medium,
+                style = MaterialTheme.typography.bodyLarge,
+                lineHeight = 22.sp,
+                fontWeight = FontWeight.Normal,
             )
         }
     }

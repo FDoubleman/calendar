@@ -216,24 +216,25 @@ enum class EventPriority(val sortOrder: Int) {
 private fun CalendarDayEntity.toSelectedDayUi(distance: JieqiDistance?): SelectedDayUi {
     val date = LocalDate.parse(solarDate)
     val jieqiName = extractCurrentJieqiName(jieqi)
-    val festivalTags = festivalList().take(2)
-    val tags = listOfNotNull(jieqiName) + festivalTags
+    val festivalTags = festivalList()
+    val tags = listOfNotNull(jieqiName) + festivalTags.take(2)
     val today = LocalDate.now()
-    val weekdayText = "星期$weekdayCn"
+    val displayWeekday = "周$weekdayCn"
+    val relativeStatus = date.relativeDayText(today)
 
     return SelectedDayUi(
         date = date,
         dateText = "${year}年${month}月${day}日",
         dayNumber = day.toString(),
-        weekdayText = weekdayText,
-        statusText = date.relativeDayText(today),
-        ganzhiSummary = "$ganzhiYear $ganzhiMonth $ganzhiDay [属$zodiac] $weekdayText 第${date.weekOfYear()}周",
-        lunarText = "$ganzhiYear $lunarDate",
+        weekdayText = displayWeekday,
+        statusText = relativeStatus,
+        ganzhiSummary = "$ganzhiYear $ganzhiMonth $ganzhiDay [属$zodiac] $displayWeekday 第${date.weekOfYear()}周 $relativeStatus",
+        lunarText = lunarDate,
         tags = tags,
-        festivalLine = festivalTags.joinToString(" ") { festival -> "·$festival" },
+        festivalLine = festivalTags.joinToString(" ") { festival -> "· $festival" },
         jieqiDistanceText = distance?.let { "距${it.name} ${it.days}天" }.orEmpty(),
-        yiItems = yiText.splitItems().take(10),
-        jiItems = jiText.splitItems().take(10),
+        yiItems = yiText.splitItems(),
+        jiItems = jiText.splitItems(),
     )
 }
 
