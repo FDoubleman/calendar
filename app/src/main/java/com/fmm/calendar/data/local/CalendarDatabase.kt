@@ -25,11 +25,11 @@ abstract class CalendarDatabase : RoomDatabase() {
                 INSTANCE ?: Room.databaseBuilder(
                     context.applicationContext,
                     CalendarDatabase::class.java,
-                    "calendar.db",
+                    "calendar_slim.db",
                 )
-                    // createFromAsset 会在 App 首次打开数据库时，把 assets 里的 calendar.db 复制到内部存储。
+                    // createFromAsset 会在 App 首次打开数据库时，把 assets 里的瘦身库复制到内部存储。
                     // 之后 Room 查询的是内部存储副本，不会直接修改 assets 文件。
-                    .createFromAsset("calendar.db")
+                    .createFromAsset("calendar_slim.db")
                     .fallbackToDestructiveMigration()
                     .build()
                     .also { INSTANCE = it }

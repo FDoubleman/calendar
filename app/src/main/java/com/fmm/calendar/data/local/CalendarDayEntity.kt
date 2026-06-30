@@ -66,8 +66,4 @@ data class CalendarDayEntity(
     val yiText: String,
     @ColumnInfo(name = "ji_text", defaultValue = "")
     val jiText: String,
-    @ColumnInfo(name = "source_url", defaultValue = "")
-    val sourceUrl: String,
-    @ColumnInfo(name = "fetched_at", defaultValue = "")
-    val fetchedAt: String,
 )

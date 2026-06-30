@@ -18,11 +18,14 @@ import com.fmm.calendar.util.LunarCalendarHelper
 import androidx.compose.ui.tooling.preview.Preview
 import java.time.LocalDate
 
+private val DATE_PICKER_MIN = LocalDate.of(1940, 1, 1)
+private val DATE_PICKER_MAX = LocalDate.of(2095, 1, 1)
+
 @Preview(showBackground = true)
 @Composable
 fun PreviewCommonDatePickerDialog() {
     CommonDatePickerDialog(
-        initialDate = LocalDate.now(),
+        initialDate = LocalDate.now().coerceIn(DATE_PICKER_MIN, DATE_PICKER_MAX),
         onDismiss = {},
         onConfirm = {}
     )
@@ -34,7 +37,7 @@ fun CommonDatePickerDialog(
     onDismiss: () -> Unit,
     onConfirm: (LocalDate) -> Unit
 ) {
-    var selectedDate by remember { mutableStateOf(initialDate) }
+    var selectedDate by remember { mutableStateOf(initialDate.coerceIn(DATE_PICKER_MIN, DATE_PICKER_MAX)) }
     var isLunarMode by remember { mutableStateOf(false) }
     
     // 预览文字，只有当滚动结束时才更新
@@ -68,7 +71,7 @@ fun CommonDatePickerDialog(
                         color = Color.Red,
                         style = MaterialTheme.typography.bodyMedium,
                         modifier = Modifier.clickable {
-                            selectedDate = LocalDate.now()
+                            selectedDate = LocalDate.now().coerceIn(DATE_PICKER_MIN, DATE_PICKER_MAX)
                             previewText = LunarCalendarHelper.formatPreviewText(selectedDate, isLunarMode)
                         }
                     )
@@ -97,10 +100,10 @@ fun CommonDatePickerDialog(
                     date = selectedDate,
                     isLunar = isLunarMode,
                     onDateChanged = { newDate ->
-                        selectedDate = newDate
+                        selectedDate = newDate.coerceIn(DATE_PICKER_MIN, DATE_PICKER_MAX)
                         // 滚动结束后更新预览文字（逻辑在 WheelPicker 的 onItemSelected 中触发，
                         // 这里直接更新 previewText 即可，因为调用端确保了 Settled 后才触发）
-                        previewText = LunarCalendarHelper.formatPreviewText(newDate, isLunarMode)
+                        previewText = LunarCalendarHelper.formatPreviewText(selectedDate, isLunarMode)
                     }
                 )
                 
@@ -134,7 +137,7 @@ fun CommonDatePickerDialog(
                         modifier = Modifier
                             .weight(1f)
                             .fillMaxHeight()
-                            .clickable { onConfirm(selectedDate) },
+                            .clickable { onConfirm(selectedDate.coerceIn(DATE_PICKER_MIN, DATE_PICKER_MAX)) },
                         contentAlignment = Alignment.Center
                     ) {
                         Text(text = "确定", color = Color.Red, fontSize = 18.sp, fontWeight = FontWeight.Bold)
@@ -203,7 +206,7 @@ private fun SolarDateWheels(
     date: LocalDate,
     onDateChanged: (LocalDate) -> Unit
 ) {
-    val years = (1900..2100).map { "${it}年" }
+    val years = (DATE_PICKER_MIN.year..DATE_PICKER_MAX.year).map { "${it}年" }
     val months = (1..12).map { "${it}月" }
     
     val daysInMonth = date.lengthOfMonth()
@@ -212,12 +215,14 @@ private fun SolarDateWheels(
     Row(modifier = Modifier.fillMaxWidth()) {
         WheelPicker(
             items = years,
-            initialIndex = date.year - 1900,
+            initialIndex = date.year - DATE_PICKER_MIN.year,
             onItemSelected = { index ->
-                val newYear = 1900 + index
+                val newYear = DATE_PICKER_MIN.year + index
                 val maxDays = LocalDate.of(newYear, date.monthValue, 1).lengthOfMonth()
                 val newDay = date.dayOfMonth.coerceAtMost(maxDays)
-                onDateChanged(LocalDate.of(newYear, date.monthValue, newDay))
+                onDateChanged(
+                    LocalDate.of(newYear, date.monthValue, newDay).coerceIn(DATE_PICKER_MIN, DATE_PICKER_MAX)
+                )
             },
             modifier = Modifier.weight(1f)
         )
@@ -228,7 +233,9 @@ private fun SolarDateWheels(
                 val newMonth = index + 1
                 val maxDays = LocalDate.of(date.year, newMonth, 1).lengthOfMonth()
                 val newDay = date.dayOfMonth.coerceAtMost(maxDays)
-                onDateChanged(LocalDate.of(date.year, newMonth, newDay))
+                onDateChanged(
+                    LocalDate.of(date.year, newMonth, newDay).coerceIn(DATE_PICKER_MIN, DATE_PICKER_MAX)
+                )
             },
             modifier = Modifier.weight(1f)
         )
@@ -236,7 +243,7 @@ private fun SolarDateWheels(
             items = days,
             initialIndex = date.dayOfMonth - 1,
             onItemSelected = { index ->
-                onDateChanged(date.withDayOfMonth(index + 1))
+                onDateChanged(date.withDayOfMonth(index + 1).coerceIn(DATE_PICKER_MIN, DATE_PICKER_MAX))
             },
             modifier = Modifier.weight(1f)
         )
@@ -257,7 +264,7 @@ private fun LunarDateWheels(
     var isLeapMonth by remember(date) { mutableStateOf(initialLunar.isLeap) }
     var currentDay by remember(date) { mutableIntStateOf(initialLunar.day) }
 
-    val years = (1900..2100).map { "${it}年" }
+    val years = (DATE_PICKER_MIN.year..DATE_PICKER_MAX.year).map { "${it}年" }
     val lunarMonths = remember(currentYear) { LunarCalendarHelper.getLunarMonthNames(currentYear) }
     val dayNames = remember(currentYear, currentMonth, isLeapMonth) { 
         LunarCalendarHelper.getLunarDayNames(currentYear, currentMonth, isLeapMonth) 
@@ -266,9 +273,9 @@ private fun LunarDateWheels(
     Row(modifier = Modifier.fillMaxWidth()) {
         WheelPicker(
             items = years,
-            initialIndex = currentYear - 1900,
+            initialIndex = currentYear - DATE_PICKER_MIN.year,
             onItemSelected = { index ->
-                val newYear = 1900 + index
+                val newYear = DATE_PICKER_MIN.year + index
                 if (newYear != currentYear) {
                     currentYear = newYear
                     // 检查新的一年是否还有当前的闰月，如果没有，则降级为普通月
@@ -277,7 +284,7 @@ private fun LunarDateWheels(
                         isLeapMonth = false
                     }
                     val newSolar = LunarCalendarHelper.toSolar(newYear, currentMonth, currentDay, isLeapMonth)
-                    onDateChanged(newSolar)
+                    onDateChanged(newSolar.coerceIn(DATE_PICKER_MIN, DATE_PICKER_MAX))
                 }
             },
             modifier = Modifier.weight(1f)
@@ -291,7 +298,7 @@ private fun LunarDateWheels(
                     currentMonth = newMonth
                     isLeapMonth = isLeap
                     val newSolar = LunarCalendarHelper.toSolar(currentYear, newMonth, currentDay, isLeap)
-                    onDateChanged(newSolar)
+                    onDateChanged(newSolar.coerceIn(DATE_PICKER_MIN, DATE_PICKER_MAX))
                 }
             },
             modifier = Modifier.weight(1f)
@@ -304,7 +311,7 @@ private fun LunarDateWheels(
                 if (newDay != currentDay) {
                     currentDay = newDay
                     val newSolar = LunarCalendarHelper.toSolar(currentYear, currentMonth, newDay, isLeapMonth)
-                    onDateChanged(newSolar)
+                    onDateChanged(newSolar.coerceIn(DATE_PICKER_MIN, DATE_PICKER_MAX))
                 }
             },
             modifier = Modifier.weight(1f)
@@ -314,7 +321,6 @@ private fun LunarDateWheels(
 
 private fun calculateLunarMonthIndex(year: Int, month: Int, isLeap: Boolean): Int {
     val months = LunarCalendarHelper.getLunarMonthNames(year)
-    val targetName = (if (isLeap) "闰" else "") + (if (month == 1) "正月" else if (month == 11) "冬月" else if (month == 12) "腊月" else "${CHINESE_MONTHS[month-1]}月")
     // 实际上 LunarCalendarHelper 已经提供了名称，直接按规则查
     val searchName = (if (isLeap) "闰" else "") + when(month) {
         1 -> "正月"
