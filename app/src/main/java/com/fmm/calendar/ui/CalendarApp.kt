@@ -40,6 +40,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.fmm.calendar.ui.calendar.CalendarScreen
 import com.fmm.calendar.ui.theme.CalendarTheme
+import com.fmm.calendar.ui.weather.WeatherScreen
 
 // BottomTab 把底部导航需要的信息收拢在一起。
 // 这样以后新增/修改 tab 时，不需要到处找标题、route 和图标。
@@ -176,14 +177,6 @@ private fun AppNavHost(
             ProfileScreen()
         }
     }
-}
-
-@Composable
-private fun WeatherScreen() {
-    PlaceholderScreen(
-        title = "天气",
-        message = "这里将逐步接入天气概览、城市选择和未来预报。",
-    )
 }
 
 @Composable

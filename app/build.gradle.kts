@@ -1,7 +1,21 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.ksp)
+}
+
+
+val localProperties = Properties().apply {
+    val file = rootProject.file("local.properties")
+    if (file.exists()) {
+        file.inputStream().use(::load)
+    }
+}
+
+fun String.asBuildConfigString(): String {
+    return "\"${replace("\\", "\\\\").replace("\"", "\\\"")}\""
 }
 
 android {
@@ -16,6 +30,17 @@ android {
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        buildConfigField(
+            "String",
+            "QWEATHER_API_HOST",
+            localProperties.getProperty("QWEATHER_API_HOST", "").asBuildConfigString(),
+        )
+        buildConfigField(
+            "String",
+            "QWEATHER_API_KEY",
+            localProperties.getProperty("QWEATHER_API_KEY", "").asBuildConfigString(),
+        )
     }
 
     buildTypes {
@@ -39,6 +64,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 
     composeOptions {
@@ -60,6 +86,7 @@ dependencies {
     implementation(libs.androidx.navigation.compose)
     implementation(libs.androidx.room.runtime)
     implementation(libs.androidx.room.ktx)
+    implementation(libs.okhttp)
 
     ksp(libs.androidx.room.compiler)
 
