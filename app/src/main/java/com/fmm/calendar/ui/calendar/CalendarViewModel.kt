@@ -22,19 +22,21 @@ class CalendarViewModel(application: Application) : AndroidViewModel(application
         CalendarDatabase.getInstance(application).calendarDao(),
     )
 
-    private val today = LocalDate.now()
     private val dayEntitiesCache = mutableMapOf<YearMonth, List<CalendarDayEntity>>()
 
     private val _uiState = MutableStateFlow(
-        CalendarUiState(
-            today = today,
-            visibleMonth = YearMonth.from(today),
-            selectedDate = today,
-        ),
+        LocalDate.now().let { today ->
+            CalendarUiState(
+                today = today,
+                visibleMonth = YearMonth.from(today),
+                selectedDate = today,
+            )
+        },
     )
     val uiState: StateFlow<CalendarUiState> = _uiState.asStateFlow()
 
     init {
+        val today = _uiState.value.today
         loadMonth(YearMonth.from(today), selectedDate = today)
     }
 
@@ -44,6 +46,12 @@ class CalendarViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun selectDate(date: LocalDate) {
+        val targetMonth = YearMonth.from(date)
+        if (targetMonth != _uiState.value.visibleMonth) {
+            loadMonth(targetMonth, selectedDate = date)
+            return
+        }
+
         _uiState.update { current ->
             current.copy(selectedDate = date)
         }
@@ -51,6 +59,14 @@ class CalendarViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun goToToday() {
+        val today = LocalDate.now()
+        loadMonth(YearMonth.from(today), selectedDate = today)
+    }
+
+    fun refreshTodayIfNeeded() {
+        val today = LocalDate.now()
+        if (today == _uiState.value.today) return
+
         loadMonth(YearMonth.from(today), selectedDate = today)
     }
 
@@ -66,6 +82,7 @@ class CalendarViewModel(application: Application) : AndroidViewModel(application
 
     // 如果切换到今天所在月份，优先选中今天；否则默认选中该月 1 号。
     private fun preferredSelectedDate(month: YearMonth): LocalDate {
+        val today = LocalDate.now()
         return if (month == YearMonth.from(today)) today else month.atDay(1)
     }
 
@@ -78,8 +95,10 @@ class CalendarViewModel(application: Application) : AndroidViewModel(application
 
     private fun loadMonth(month: YearMonth, selectedDate: LocalDate) {
         viewModelScope.launch {
+            val today = LocalDate.now()
             _uiState.update {
                 it.copy(
+                    today = today,
                     isLoading = true,
                     visibleMonth = month,
                     selectedDate = selectedDate,
@@ -103,7 +122,8 @@ class CalendarViewModel(application: Application) : AndroidViewModel(application
                     month = m,
                     monthDays = getDaysForMonth(m),
                     previousMonthDays = getDaysForMonth(m.minusMonths(1)),
-                    nextMonthDays = getDaysForMonth(m.plusMonths(1))
+                    nextMonthDays = getDaysForMonth(m.plusMonths(1)),
+                    today = today,
                 )
             }
 
@@ -124,9 +144,10 @@ class CalendarViewModel(application: Application) : AndroidViewModel(application
             val distance = repository.getNextJieqiDistance(date, entity?.jieqi.orEmpty())
 
             _uiState.update {
+                val today = it.today
                 it.copy(
-                    selectedDay = entity?.toSelectedDayUi(distance),
-                    selectedEvents = mockEvents.filter { event -> event.date == date },
+                    selectedDay = entity?.toSelectedDayUi(distance, today),
+                    selectedEvents = mockEvents(today).filter { event -> event.date == date },
                 )
             }
         }
@@ -137,6 +158,7 @@ class CalendarViewModel(application: Application) : AndroidViewModel(application
         monthDays: List<CalendarDayEntity>,
         previousMonthDays: List<CalendarDayEntity>,
         nextMonthDays: List<CalendarDayEntity>,
+        today: LocalDate,
     ): List<CalendarDayCellUi> {
         val leadingEmptyCount = month.atDay(1).dayOfWeek.value % 7
         val trailingEmptyCount = (7 - (leadingEmptyCount + month.lengthOfMonth()) % 7) % 7
@@ -148,7 +170,7 @@ class CalendarViewModel(application: Application) : AndroidViewModel(application
             val date = LocalDate.parse(entity.solarDate)
             entity.toDayCellUi(
                 isCurrentMonth = true,
-                eventDots = eventDotsFor(date),
+                eventDots = eventDotsFor(date, today),
             )
         }
         val trailing = nextMonthDays
@@ -163,8 +185,8 @@ class CalendarViewModel(application: Application) : AndroidViewModel(application
         return (leadingEmptyCount + month.lengthOfMonth() + 6) / 7
     }
 
-    private fun eventDotsFor(date: LocalDate): List<EventPriority> {
-        return mockEvents
+    private fun eventDotsFor(date: LocalDate, today: LocalDate): List<EventPriority> {
+        return mockEvents(today)
             .filter { event -> event.date == date }
             .map { event -> event.priority }
             .distinct()
@@ -234,12 +256,11 @@ enum class EventPriority(val sortOrder: Int) {
     Low(2),
 }
 
-private fun CalendarDayEntity.toSelectedDayUi(distance: JieqiDistance?): SelectedDayUi {
+private fun CalendarDayEntity.toSelectedDayUi(distance: JieqiDistance?, today: LocalDate): SelectedDayUi {
     val date = LocalDate.parse(solarDate)
     val jieqiName = extractCurrentJieqiName(jieqi)
     val festivalTags = festivalList()
     val tags = listOfNotNull(jieqiName) + festivalTags.take(2)
-    val today = LocalDate.now()
     val displayWeekday = "周$weekdayCn"
     val relativeStatus = date.relativeDayText(today)
 
@@ -329,44 +350,44 @@ private fun LocalDate.weekOfYear(): Int {
     return java.time.temporal.WeekFields.ISO.weekOfYear().getFrom(this).toInt()
 }
 
-private val mockEvents = listOf(
+private fun mockEvents(today: LocalDate) = listOf(
     MockCalendarEvent(
-        date = LocalDate.now(),
+        date = today,
         time = "10:00",
         title = "项目周会",
         location = "会议室A",
         priority = EventPriority.High,
     ),
     MockCalendarEvent(
-        date = LocalDate.now(),
+        date = today,
         time = "14:30",
         title = "设计评审",
         location = "会议室B",
         priority = EventPriority.Low,
     ),
     MockCalendarEvent(
-        date = LocalDate.now(),
+        date = today,
         time = "19:00",
         title = "健身",
         location = "健身房",
         priority = EventPriority.Medium,
     ),
     MockCalendarEvent(
-        date = LocalDate.now().plusDays(2),
+        date = today.plusDays(2),
         time = "09:30",
         title = "整理需求",
         location = "线上",
         priority = EventPriority.Medium,
     ),
     MockCalendarEvent(
-        date = LocalDate.now().plusDays(5),
+        date = today.plusDays(5),
         time = "16:00",
         title = "版本检查",
         location = "会议室C",
         priority = EventPriority.Low,
     ),
     MockCalendarEvent(
-        date = LocalDate.now().minusDays(3),
+        date = today.minusDays(3),
         time = "11:00",
         title = "资料归档",
         location = "办公室",

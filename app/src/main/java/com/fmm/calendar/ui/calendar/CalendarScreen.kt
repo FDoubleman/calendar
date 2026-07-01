@@ -7,7 +7,6 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -17,12 +16,10 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
@@ -48,36 +45,34 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import com.fmm.calendar.ui.components.CommonDatePickerDialog
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.drawscope.DrawScope
-import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.PlatformTextStyle
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.LineHeightStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.flow.collect
-import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.YearMonth
 import java.time.temporal.ChronoUnit
@@ -94,6 +89,7 @@ fun CalendarScreen(
         onDateClick = viewModel::selectDate,
         onTodayClick = viewModel::goToToday,
         onMonthChanged = viewModel::onMonthChanged,
+        onResumeRefresh = viewModel::refreshTodayIfNeeded,
     )
 }
 
@@ -104,8 +100,24 @@ private fun CalendarScreenContent(
     onDateClick: (LocalDate) -> Unit,
     onTodayClick: () -> Unit,
     onMonthChanged: (YearMonth) -> Unit,
+    onResumeRefresh: () -> Unit,
 ) {
     var isDatePickerVisible by remember { mutableStateOf(false) }
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val currentOnResumeRefresh by rememberUpdatedState(onResumeRefresh)
+
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                currentOnResumeRefresh()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
 
     Surface(
         modifier = Modifier.fillMaxSize(),
@@ -198,6 +210,7 @@ private fun MonthCalendarCard(
 ) {
     val initialMonth = remember { YearMonth.from(today) }
     val pagerState = rememberPagerState(initialPage = 2500) { 5000 }
+    val currentVisibleMonth by rememberUpdatedState(visibleMonth)
 
     // 使用 derivedStateOf 实时计算当前显示的月份，用于标题显示，确保滑动过程中的标题切换比等待 VM 状态回传更即时且丝滑
     val displayedMonth = remember {
@@ -220,7 +233,7 @@ private fun MonthCalendarCard(
     LaunchedEffect(pagerState) {
         snapshotFlow { pagerState.settledPage }.collect { page ->
             val targetMonth = initialMonth.plusMonths((page - 2500).toLong())
-            if (targetMonth != visibleMonth) {
+            if (targetMonth != currentVisibleMonth) {
                 onMonthChanged(targetMonth)
             }
         }
@@ -308,10 +321,10 @@ private fun WeekHeader() {
     Row(modifier = Modifier.fillMaxWidth()) {
         weeks.forEachIndexed { index, week ->
             Text(
+                fontSize = 16.sp,
                 text = week,
                 modifier = Modifier.weight(1f),
                 color = if (index == 0 || index == 6) ErrorRed else MaterialTheme.colorScheme.onSurface,
-                style = MaterialTheme.typography.labelLarge,
                 fontWeight = FontWeight.Medium,
                 textAlign = TextAlign.Center,
             )
@@ -412,9 +425,9 @@ private fun CalendarDayCell(
                         contentAlignment = Alignment.Center,
                     ) {
                         Text(
+                            fontSize = 18.sp,
                             text = cell.dayNumber,
                             color = dayColor,
-                            style = MaterialTheme.typography.titleMedium,
                             fontWeight = if (selected || isToday) FontWeight.Bold else FontWeight.Medium,
                         )
                     }
@@ -504,7 +517,7 @@ private fun SelectedDateCard(selectedDay: SelectedDayUi?) {
                 Text(
                     text = selectedDay.lunarText,
                     style = TextStyle(
-                        fontSize = 32.sp,
+                        fontSize = 24.sp,
                         fontWeight = FontWeight.Normal,
                         platformStyle = PlatformTextStyle(includeFontPadding = false),
                     ),
@@ -617,7 +630,7 @@ private fun AlmanacColumn(
         modifier = modifier.padding(horizontal = 14.dp, vertical = 12.dp),
     ) {
         Row(
-            verticalAlignment = Alignment.Top,
+            verticalAlignment = Alignment.CenterVertically,
         ) {
             Box(
                 modifier = Modifier
@@ -821,7 +834,8 @@ private fun PreviewCalendarScreen() {
             uiState = mockUiState,
             onDateClick = {},
             onTodayClick = {},
-            onMonthChanged = {}
+            onMonthChanged = {},
+            onResumeRefresh = {},
         )
     }
 }
